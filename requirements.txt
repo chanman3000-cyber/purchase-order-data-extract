@@ -1,4 +1,3 @@
-requests
 python-docx
 streamlit
-pypdf
+pdfplumber
