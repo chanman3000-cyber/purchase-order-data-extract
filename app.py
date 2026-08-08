@@ -1,5 +1,5 @@
 import streamlit as st
-from groq import Groq
+from openai import OpenAI
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
@@ -9,7 +9,7 @@ import re
 from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor (Unrestricted Groq Pipeline)")
+st.title("📄 Purchase Order Data Extractor (Unrestricted Core Engine)")
 st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
 def style_text_element(paragraph, text, size_pt=9, bold=False):
@@ -27,20 +27,20 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-# Look for the hidden Groq API Key in your cloud settings
-if "GROQ_API_KEY" in st.secrets:
-    api_key = st.secrets["GROQ_API_KEY"]
+# Look for the hidden OpenAI API Key in your cloud settings
+if "OPENAI_API_KEY" in st.secrets:
+    api_key = st.secrets["OPENAI_API_KEY"]
 else:
     api_key = None
 
 if api_key:
-    # Initialize the Groq core engine client
-    client = Groq(api_key=api_key)
+    # Initialize the official OpenAI backend client
+    client = OpenAI(api_key=api_key)
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Extracting data via ultra-fast Groq pipeline..."):
+            with st.spinner("Extracting data via unrestricted cloud channel..."):
                 try:
                     file_bytes = uploaded_file.read()
                     
@@ -71,9 +71,9 @@ if api_key:
                     {extracted_text}
                     """
                     
-                    # Direct, fast API call to Llama 3.3 70B via Groq
+                    # High-speed processing call via gpt-4o-mini
                     completion = client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
+                        model="gpt-4o-mini",
                         messages=[
                             {
                                 "role": "user",
@@ -163,4 +163,4 @@ if api_key:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Missing Groq API Key. Please add it to your Streamlit Cloud Secrets settings.")
+    st.error("Missing OpenAI API Key. Please add it to your Streamlit Cloud Secrets settings.")
