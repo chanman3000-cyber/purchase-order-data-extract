@@ -1,4 +1,4 @@
-openai
+mistralai
 python-docx
 streamlit
 pypdf
