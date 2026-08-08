@@ -1,14 +1,15 @@
 import streamlit as st
-from google import genai
+import requests
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import io
 import re
+import base64
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor")
+st.title("📄 Purchase Order Data Extractor (Unrestricted HK Engine)")
 st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
 # Helper function to apply tight 9pt MingLiU font to elements
@@ -28,29 +29,25 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-if "GEMINI_API_KEY" in st.secrets:
-    api_key = st.secrets["GEMINI_API_KEY"]
+# Look for the hidden OpenRouter key in cloud secrets
+if "OPENROUTER_API_KEY" in st.secrets:
+    api_key = st.secrets["OPENROUTER_API_KEY"]
 else:
     api_key = None
 
 if api_key:
-    client = genai.Client(api_key=api_key)
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF, DOCX)", type=["pdf", "docx"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Analyzing document with Gemini AI..."):
+            with st.spinner("Extracting data via unrestricted cloud channel..."):
                 try:
                     file_bytes = uploaded_file.read()
+                    encoded_file = base64.b64encode(file_bytes).decode("utf-8")
                     mime_type = "application/pdf" if uploaded_file.name.endswith('.pdf') else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     
-                    uploaded_ai_file = client.files.upload(
-                        file=io.BytesIO(file_bytes),
-                        config={"mime_type": mime_type}
-                    )
-                    
                     prompt = """
-                    Analyze this purchase order. 
+                    Analyze this purchase order document.
                     
                     On the very first line of your output text, extract the main header information in exactly this format:
                     HEADER | Restaurant Name | PO Number | Date
@@ -59,58 +56,80 @@ if api_key:
                     For each item, extract exactly these fields separated by a pipe character (|):
                     Department | Chinese Item Name | English Name & Spec | Qty | Price | Total
                     
-                    Do not include markdown table structures, just raw text lines separated by |.
+                    Do not include markdown table structures, introduction sentences, or code blocks. Just output raw text lines separated by |.
                     """
                     
-                    response = client.models.generate_content(
-                        model='gemini-2.5-flash',
-                        contents=[uploaded_ai_file, prompt]
-                    )
+                    # Call OpenRouter API using DeepSeek model (Completely unrestricted in HK)
+                    headers = {
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    }
                     
-                    client.files.delete(name=uploaded_ai_file.name)
+                    payload = {
+                        "model": "deepseek/deepseek-chat",
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": prompt
+                                    },
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{mime_type};base64,{encoded_file}"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                    
+                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
+                    response_json = response.json()
+                    ai_output = response_json["choices"][0]["message"]["content"]
                     
                     doc = Document()
                     
-                    # Define explicit clean column widths in inches (Total = 6.5 inches)
+                    # Explicit column widths (Total = 6.5 inches)
                     col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
                     
-                    # Create the main item table structure
-                    headers = ['Department', 'Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price', 'Total']
+                    # Create document table structure
+                    headers_list = ['Department', 'Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price', 'Total']
                     table = doc.add_table(rows=1, cols=6)
                     table.style = 'Table Grid'
-                    table.allow_autofit = False  # Lock to use our explicit widths
+                    table.allow_autofit = False
                     
-                    # Add Header Row and set cell sizes
-                    hdr_cells = table.rows[0].cells
-                    for i, title in enumerate(headers):
+                    hdr_cells = table.rows.cells
+                    for i, title in enumerate(headers_list):
                         hdr_cells[i].width = col_widths[i]
-                        style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
+                        style_text_element(hdr_cells[i].paragraphs, title, size_pt=9, bold=True)
                     
-                    lines = response.text.strip().split('\n')
+                    lines = ai_output.strip().split('\n')
                     grand_total = 0.0
                     
                     for line in lines:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # Parse Metadata Header Line
-                            if parts[0] == "HEADER" and len(parts) == 4:
+                            # Parse Metadata Header
+                            if "HEADER" in parts[0] and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
                                 style_text_element(p2, f"Purchase Order #: {parts[2]}", size_pt=11, bold=True)
                                 p3 = doc.add_paragraph()
                                 style_text_element(p3, f"Date: {parts[3]}", size_pt=11, bold=True)
-                                doc.add_paragraph("") # Space spacer
+                                doc.add_paragraph("")
                             
-                            # Parse Standard Items
+                            # Parse Line Items
                             elif len(parts) == 6:
                                 row_cells = table.add_row().cells
                                 for i in range(6):
                                     row_cells[i].width = col_widths[i]
-                                    style_text_element(row_cells[i].paragraphs[0], parts[i], size_pt=9, bold=False)
+                                    style_text_element(row_cells[i].paragraphs, parts[i], size_pt=9, bold=False)
                                 
-                                # Safely clean data and add to total calculations
                                 try:
                                     clean_total_str = re.sub(r'[^\d.]', '', parts[5])
                                     if clean_total_str:
@@ -118,18 +137,16 @@ if api_key:
                                 except ValueError:
                                     pass
                     
-                    # Add calculated Grand Total row at the very bottom
+                    # Add calculated Grand Total row at the bottom
                     footer_row = table.add_row()
                     footer_cells = footer_row.cells
-                    
-                    # Format footer widths to match the rest of the table grid
                     for i in range(6):
                         footer_cells[i].width = col_widths[i]
                         
-                    style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
-                    style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
+                    style_text_element(footer_cells[0].paragraphs, "Grand Total", size_pt=9, bold=True)
+                    style_text_element(footer_cells[5].paragraphs, f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
-                    # Double-verify explicit strict tight item cell properties 
+                    # Set tight item spacing to zero 
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
@@ -153,4 +170,4 @@ if api_key:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Missing Gemini API Key. Please add it to your Streamlit Cloud Secrets settings.")
+    st.error("Missing OpenRouter API Key. Please add it to your Streamlit Cloud Secrets settings.")
