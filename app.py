@@ -36,14 +36,12 @@ def clear_cell_borders(cell):
         tcBorders.append(border)
     tcPr.append(tcBorders)
 
-# Look for the hidden Google API key in cloud secrets
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
 else:
     api_key = None
 
 if api_key:
-    # Initialize the official Google GenAI Client
     client = genai.Client(api_key=api_key)
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
@@ -53,7 +51,6 @@ if api_key:
                 try:
                     file_bytes = uploaded_file.read()
                     
-                    # Read the PDF text layer on the server
                     pdf_file = io.BytesIO(file_bytes)
                     reader = PdfReader(pdf_file)
                     extracted_text = ""
@@ -81,9 +78,9 @@ if api_key:
                     {extracted_text}
                     """
                     
-                    # Call official Gemini 2.5 Flash endpoint (unrestricted from the US cloud host hosting the app)
+                    # UPDATED FIX: Switched to the modern, active gemini-2.0-flash model
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-2.0-flash',
                         contents=prompt,
                     )
                     
@@ -127,7 +124,7 @@ if api_key:
                         table = doc.add_table(rows=1, cols=5)
                         table.allow_autofit = False
                         
-                        hdr_cells = table.rows[cells]
+                        hdr_cells = table.rows[0].cells
                         for i, title in enumerate(headers_list):
                             hdr_cells[i].width = col_widths[i+1]
                             style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
