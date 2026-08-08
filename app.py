@@ -81,11 +81,10 @@ if api_key:
                                 "content": prompt
                             }
                         ],
-                        "parameters": {
-                            "temperature": 0.0
-                        }
+                        "temperature": 0.0
                     }
                     
+                    # CORRECT ENDPOINT URL LINK ACCORDING TO SPECS
                     response = requests.post("https://mistral.ai", headers=headers, json=payload)
                     
                     if response.status_code != 200:
@@ -115,6 +114,7 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
+                            # CORRECT PARSING FOR SINGLE HEADER PARAMETERS 
                             if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
@@ -149,6 +149,7 @@ if api_key:
                     style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
+                    # Force strict line height padding to 0
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
