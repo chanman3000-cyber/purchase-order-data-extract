@@ -32,7 +32,6 @@ if uploaded_file is not None:
     if st.button("Process Document and Generate File"):
         with st.spinner("Parsing layout blocks natively in local memory..."):
             try:
-                # 1. Initialize offline PDF plumber pipeline
                 pdf_file = io.BytesIO(uploaded_file.read())
                 
                 restaurant_name = "Not Found"
@@ -41,7 +40,6 @@ if uploaded_file is not None:
                 extracted_items = []
                 current_dept = "General"
                 
-                # Regex logic loops to identify PO header items
                 po_pattern = re.compile(r'(?:PO\s*No|PO\s*#|單號)[:\s]*([A-Z0-9\-]+)', re.IGNORECASE)
                 date_pattern = re.compile(r'(?:Date|日期)[:\s]*([\d\-\/]+)')
                 
@@ -49,7 +47,7 @@ if uploaded_file is not None:
                     for page in pdf.pages:
                         text = page.extract_text() or ""
                         
-                        # Extract basic metadata properties from text streams
+                        # Extract Header Info
                         for line in text.split('\n'):
                             if "PO" in line or "單號" in line:
                                 match = po_pattern.search(line)
@@ -60,35 +58,36 @@ if uploaded_file is not None:
                             if "Restaurant" in line or "客戶" in line or "中翠" in line:
                                 restaurant_name = line.split(':')[-1].strip() if ':' in line else line.strip()
 
-                        # Extract table matrices natively from the document layout geometry
+                        # Extract Tables Natively
                         tables = page.extract_tables()
                         for table in tables:
                             for row in table:
-                                # Clean data array fields and drop empty spacing lines
-                                row_cleaned = [str(cell).strip() for cell in row if cell is not None]
+                                row_cleaned = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
                                 if len(row_cleaned) >= 4 and not any("Total" in str(c) for c in row_cleaned):
                                     
-                                    # Target department updates based on line string triggers
-                                    if "廚房" in row_cleaned[0] or "Kitchen" in row_cleaned[0]:
+                                    # Set current department layer dynamically
+                                    if "廚房" in "".join(row_cleaned) or "Kitchen" in "".join(row_cleaned):
                                         current_dept = "Kitchen"
                                         continue
-                                    elif "水吧" in row_cleaned[0] or "Beverage" in row_cleaned[0]:
+                                    elif "水吧" in "".join(row_cleaned) or "Beverage" in "".join(row_cleaned):
                                         current_dept = "Beverage"
                                         continue
-                                    elif "麵檔" in row_cleaned[0] or "Noodle" in row_cleaned[0]:
+                                    elif "麵檔" in "".join(row_cleaned) or "Noodle" in "".join(row_cleaned):
                                         current_dept = "Noodle Stall"
                                         continue
-                                        
-                                    extracted_items.append({
-                                        "dept": current_dept,
-                                        "chinese": row_cleaned[0],
-                                        "english": row_cleaned[1] if len(row_cleaned) > 1 else "",
-                                        "qty": row_cleaned[2] if len(row_cleaned) > 2 else "1",
-                                        "price": row_cleaned[3] if len(row_cleaned) > 3 else "0",
-                                        "total": row_cleaned[4] if len(row_cleaned) > 4 else "0"
-                                    })
+                                    
+                                    # Safe extraction if row contains enough items
+                                    if len(row_cleaned) >= 5:
+                                        extracted_items.append({
+                                            "dept": current_dept,
+                                            "chinese": row_cleaned[0],
+                                            "english": row_cleaned[1],
+                                            "qty": row_cleaned[2],
+                                            "price": row_cleaned[3],
+                                            "total": row_cleaned[4]
+                                        })
                 
-                # Fallback to pure text matching array slicing if native table geometry layout mapping is empty
+                # Fallback text parser if geometric tables are empty
                 if not extracted_items:
                     with pdfplumber.open(pdf_file) as pdf:
                         for page in pdf.pages:
@@ -98,17 +97,17 @@ if uploaded_file is not None:
                                 if len(parts) == 0:
                                     parts = [p.strip() for p in line.split('  ') if p.strip()]
                                     
-                                if len(parts) >= 4:
+                                if len(parts) >= 5:
                                     extracted_items.append({
-                                        "dept": "Kitchen", # Default allocation layer
+                                        "dept": "Kitchen",
                                         "chinese": parts[0],
                                         "english": parts[1],
                                         "qty": parts[2],
                                         "price": parts[3],
-                                        "total": parts[4] if len(parts) > 4 else parts[3]
+                                        "total": parts[4]
                                     })
 
-                # 2. Build the output document
+                # Create Word Document
                 doc = Document()
                 
                 p1 = doc.add_paragraph()
@@ -117,7 +116,7 @@ if uploaded_file is not None:
                 style_text_element(p2, f"Purchase Order #: {po_number if po_number != 'Not Found' else 'P350716'}", size_pt=11, bold=True)
                 p3 = doc.add_paragraph()
                 style_text_element(p3, f"Date: {po_date if po_date != 'Not Found' else '08-08-2026'}", size_pt=11, bold=True)
-                doc.add_paragraph("") # Space divider
+                doc.add_paragraph("") 
                 
                 col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
                 headers_list = ['Department', 'Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price', 'Total']
@@ -138,7 +137,7 @@ if uploaded_file is not None:
                     trPr.append(OxmlElement('w:cantSplit'))
                     row_cells = row.cells
                     
-                    # Distribute structured data objects across column grids
+                    # Correct column alignment
                     style_text_element(row_cells[0].paragraphs[0], item["dept"], size_pt=9)
                     style_text_element(row_cells[1].paragraphs[0], item["chinese"], size_pt=9)
                     style_text_element(row_cells[2].paragraphs[0], item["english"], size_pt=9)
@@ -156,7 +155,7 @@ if uploaded_file is not None:
                     except ValueError:
                         pass
                 
-                # Append footer
+                # Append footer totals
                 footer_row = table.add_row()
                 footer_cells = footer_row.cells
                 for i in range(6):
@@ -165,7 +164,7 @@ if uploaded_file is not None:
                 style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                 style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                 
-                # Apply explicit tight 0 pt linespacing overrides
+                # Tighten up row margins to exactly 0 pt
                 for row in table.rows:
                     for cell in row.cells:
                         for paragraph in cell.paragraphs:
@@ -183,3 +182,8 @@ if uploaded_file is not None:
                     label="📥 Download Extracted Word Document",
                     data=doc_buffer,
                     file_name="extracted_po_summary.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
+                    
+            except Exception as e:
+                st.error(f"An error occurred during local extraction: {e}")
