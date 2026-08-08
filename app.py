@@ -1,23 +1,40 @@
 import streamlit as st
 from google import genai
 from docx import Document
+from docx.shared import Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 import io
+import re
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
 st.title("📄 Purchase Order Data Extractor")
-st.write("Upload a PO document to extract items into a tight Word Document table.")
+st.write("Upload a PO document to extract items into a tight MingLiU table format.")
 
-# Try to get the hidden API key from the cloud settings
+# Helper function to apply tight 9pt MingLiU font to elements
+def style_text_element(paragraph, text, size_pt=9, bold=False):
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = 1.0
+    
+    run = paragraph.add_run(text)
+    run.bold = bold
+    run.font.name = 'MingLiU'
+    run.font.size = Pt(size_pt)
+    
+    # Force Microsoft Word to recognize the MingLiU font for Chinese characters
+    rPr = run._r.get_or_add_rPr()
+    rFonts = OxmlElement('w:rFonts')
+    rFonts.set(qn('w:eastAsia'), 'MingLiU')
+    rPr.append(rFonts)
+
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
 else:
     api_key = None
 
 if api_key:
-    # Initialize client using the hidden cloud key
     client = genai.Client(api_key=api_key)
-    
-    # File Uploader UI Widget
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF, DOCX)", type=["pdf", "docx"])
     
     if uploaded_file is not None:
@@ -32,7 +49,6 @@ if api_key:
                         config={"mime_type": mime_type}
                     )
                     
-                    # UPDATED PROMPT: Instructs the AI to capture header details first
                     prompt = """
                     Analyze this purchase order. 
                     
@@ -54,42 +70,59 @@ if api_key:
                     client.files.delete(name=uploaded_ai_file.name)
                     
                     doc = Document()
-                    doc.add_heading('Purchase Order Data Extraction', level=1)
                     
                     # Create the main item table structure
                     headers = ['Department', 'Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price (HKD)', 'Total Amount (HKD)']
                     table = doc.add_table(rows=1, cols=6)
                     table.style = 'Table Grid'
                     
-                    hdr_cells = table.rows.cells
+                    # Add Header Row
+                    hdr_cells = table.rows[0].cells
                     for i, title in enumerate(headers):
-                        hdr_cells[i].text = title
+                        style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
                     
                     lines = response.text.strip().split('\n')
+                    grand_total = 0.0
+                    
                     for line in lines:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # Checks if this line is the special metadata header line
+                            # Parse Header Line and add to the top of the Word Doc
                             if parts[0] == "HEADER" and len(parts) == 4:
-                                # Adds the metadata text at the top of the Word document
-                                doc.add_paragraph(f"Restaurant Name: {parts[1]}")
-                                doc.add_paragraph(f"Purchase Order #: {parts[2]}")
-                                doc.add_paragraph(f"Date: {parts[3]}")
-                                doc.add_paragraph("") # Blank line divider
+                                p1 = doc.add_paragraph()
+                                style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
+                                p2 = doc.add_paragraph()
+                                style_text_element(p2, f"Purchase Order #: {parts[2]}", size_pt=11, bold=True)
+                                p3 = doc.add_paragraph()
+                                style_text_element(p3, f"Date: {parts[3]}", size_pt=11, bold=True)
+                                doc.add_paragraph("") # Space spacer
                             
-                            # Standard 6-column line items
+                            # Parse Standard Items
                             elif len(parts) == 6:
                                 row_cells = table.add_row().cells
                                 for i in range(6):
-                                    row_cells[i].text = parts[i]
+                                    style_text_element(row_cells[i].paragraphs[0], parts[i], size_pt=9, bold=False)
+                                
+                                # Safely convert the Total string to a float number for calculating the grand total
+                                try:
+                                    clean_total_str = re.sub(r'[^\d.]', '', parts[5])
+                                    if clean_total_str:
+                                        grand_total += float(clean_total_str)
+                                except ValueError:
+                                    pass
                     
-                    # Tighten spacing to zero
+                    # Add calculated Grand Total row at the very bottom
+                    footer_cells = table.add_row().cells
+                    style_text_element(footer_cells[0].paragraphs[0], "Grand Total Amount", size_pt=9, bold=True)
+                    style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
+                    
+                    # Double-verify explicit strict tight item cell properties 
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
-                                paragraph.paragraph_format.space_before = 0
-                                paragraph.paragraph_format.space_after = 0
+                                paragraph.paragraph_format.space_before = Pt(0)
+                                paragraph.paragraph_format.space_after = Pt(0)
                                 paragraph.paragraph_format.line_spacing = 1.0
                     
                     doc_buffer = io.BytesIO()
