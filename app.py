@@ -1,5 +1,5 @@
 import streamlit as st
-import requests
+from groq import Groq
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
@@ -9,7 +9,7 @@ import re
 from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor (High-Speed Engine)")
+st.title("📄 Purchase Order Data Extractor (Unrestricted Groq Pipeline)")
 st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
 def style_text_element(paragraph, text, size_pt=9, bold=False):
@@ -27,17 +27,20 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-if "OPENROUTER_API_KEY" in st.secrets:
-    api_key = st.secrets["OPENROUTER_API_KEY"]
+# Look for the hidden Groq API Key in your cloud settings
+if "GROQ_API_KEY" in st.secrets:
+    api_key = st.secrets["GROQ_API_KEY"]
 else:
     api_key = None
 
 if api_key:
+    # Initialize the Groq core engine client
+    client = Groq(api_key=api_key)
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Extracting data via ultra-fast cloud pipeline..."):
+            with st.spinner("Extracting data via ultra-fast Groq pipeline..."):
                 try:
                     file_bytes = uploaded_file.read()
                     
@@ -68,41 +71,19 @@ if api_key:
                     {extracted_text}
                     """
                     
-                    # FIX: Provide standard web headers to bypass website bot-blocking redirection filters
-                    headers = {
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://localhost:8501", 
-                        "X-Title": "LocalPOExtractorApp"
-                    }
-                    
-                    payload = {
-                        "model": "meta-llama/llama-3.3-70b-instruct",
-                        "messages": [
+                    # Direct, fast API call to Llama 3.3 70B via Groq
+                    completion = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[
                             {
                                 "role": "user",
                                 "content": prompt
                             }
-                        ]
-                    }
+                        ],
+                        temperature=0.0
+                    )
                     
-                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
-                    
-                    if response.status_code != 200:
-                        st.error(f"OpenRouter Connection Error (Status {response.status_code}): {response.text}")
-                        st.stop()
-                        
-                    try:
-                        response_json = response.json()
-                    except Exception:
-                        st.error(f"Failed to parse server response as data. Raw Server output: {response.text}")
-                        st.stop()
-                    
-                    if "choices" not in response_json:
-                        st.error(f"API key verified, but server dropped request logic: {response_json}")
-                        st.stop()
-                        
-                    ai_output = response_json["choices"][0]["message"]["content"]
+                    ai_output = completion.choices[0].message.content
                     
                     doc = Document()
                     col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
@@ -124,7 +105,6 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # FIX: Unpacked list indices individually to prevent string formatting mismatch crashes
                             if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
@@ -136,8 +116,6 @@ if api_key:
                             
                             elif len(parts) == 6:
                                 row = table.add_row()
-                                
-                                # FIX: Enforce row rules to keep rows whole across page breaks
                                 trPr = row._tr.get_or_add_trPr()
                                 trPr.append(OxmlElement('w:cantSplit'))
                                 
@@ -185,4 +163,4 @@ if api_key:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Missing OpenRouter API Key. Please add it to your Streamlit Cloud Secrets settings.")
+    st.error("Missing Groq API Key. Please add it to your Streamlit Cloud Secrets settings.")
