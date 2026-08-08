@@ -42,6 +42,9 @@ if api_key:
                     file_bytes = uploaded_file.read()
                     encoded_file = base64.b64encode(file_bytes).decode("utf-8")
                     
+                    # Construct a valid, standards-compliant inline Base64 data string URL
+                    data_url = f"data:application/pdf;base64,{encoded_file}"
+                    
                     prompt = """
                     Analyze this purchase order document.
                     
@@ -62,7 +65,7 @@ if api_key:
                         "X-Title": "PO Extractor"
                     }
                     
-                    # FIX: Switch endpoint to gemini-2.5-flash via OpenRouter for native document handling
+                    # FIX: Format payload exactly to OpenRouter requirements: type is "file", and it uses "file_data" containing a Data URL
                     payload = {
                         "model": "google/gemini-2.5-flash",
                         "messages": [
@@ -76,8 +79,7 @@ if api_key:
                                     {
                                         "type": "file",
                                         "file": {
-                                            "mime_type": "application/pdf",
-                                            "data": encoded_file
+                                            "file_data": data_url
                                         }
                                     }
                                 ]
@@ -87,6 +89,7 @@ if api_key:
                     
                     response = requests.post("https://openrouter.ai", headers=headers, json=payload)
                     
+                    # If OpenRouter returns an error, catch it before it crashes the json parser
                     if response.status_code != 200:
                         st.error(f"OpenRouter Gateway Error (Status {response.status_code}): {response.text}")
                         st.stop()
@@ -94,7 +97,7 @@ if api_key:
                     response_json = response.json()
                     
                     if "choices" not in response_json:
-                        st.error(f"API key active but request failed: {response_json}")
+                        st.error(f"API ran successfully but model failed: {response_json}")
                         st.stop()
                         
                     ai_output = response_json["choices"][0]["message"]["content"]
@@ -119,7 +122,8 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            if parts[0] == "HEADER" and len(parts) == 4:
+                            # Safely unpack the metadata row if it matches the header format
+                            if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
