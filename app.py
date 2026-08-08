@@ -36,7 +36,6 @@ def clear_cell_borders(cell):
         tcBorders.append(border)
     tcPr.append(tcBorders)
 
-# Look for your hidden Cloudflare credentials inside Cloud Secrets
 if "CLOUDFLARE_API_TOKEN" in st.secrets and "CLOUDFLARE_ACCOUNT_ID" in st.secrets:
     api_token = st.secrets["CLOUDFLARE_API_TOKEN"]
     account_id = st.secrets["CLOUDFLARE_ACCOUNT_ID"]
@@ -81,7 +80,6 @@ if api_token and account_id:
                     {extracted_text}
                     """
                     
-                    # Direct connection to Cloudflare Workers AI regional cluster
                     headers = {
                         "Authorization": f"Bearer {api_token}",
                         "Content-Type": "application/json"
@@ -91,7 +89,8 @@ if api_token and account_id:
                         "messages": [{"role": "user", "content": prompt}]
                     }
                     
-                    url = f"https://cloudflare.com{account_id}/ai/run/@cf/meta/llama-3.3-70b-instruct"
+                    # CRITICAL URL FIX: Cleaned and separated the account ID string injection
+                    url = f"https://cloudflare.com{account_id.strip()}/ai/run/@cf/meta/llama-3.3-70b-instruct"
                     response = requests.post(url, headers=headers, json=payload)
                     
                     if response.status_code != 200:
@@ -144,10 +143,10 @@ if api_token and account_id:
                         table = doc.add_table(rows=1, cols=5)
                         table.allow_autofit = False
                         
-                        hdr_cells = table.rows[0].cells
+                        hdr_cells = table.rows.cells
                         for i, title in enumerate(headers_list):
                             hdr_cells[i].width = col_widths[i+1]
-                            style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
+                            style_text_element(hdr_cells[i].paragraphs, title, size_pt=9, bold=True)
                             clear_cell_borders(hdr_cells[i])
                         
                         for item in items:
@@ -155,7 +154,7 @@ if api_token and account_id:
                             row_cells = row.cells
                             for i in range(5):
                                 row_cells[i].width = col_widths[i+1]
-                                style_text_element(row_cells[i].paragraphs[0], item[i], size_pt=9, bold=False)
+                                style_text_element(row_cells[i].paragraphs, item[i], size_pt=9, bold=False)
                                 clear_cell_borders(row_cells[i])
                             
                             try:
