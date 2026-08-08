@@ -6,8 +6,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import io
 import re
-import base64
-from pdf2image import convert_from_bytes
+from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
 st.title("📄 Purchase Order Data Extractor (Unrestricted HK Engine)")
@@ -42,21 +41,20 @@ if api_key:
                 try:
                     file_bytes = uploaded_file.read()
                     
-                    # Convert PDF pages directly to images in memory to safely bypass OpenRouter file crashes
-                    images = convert_from_bytes(file_bytes)
-                    if not images:
-                        st.error("Failed to parse pages from the uploaded PDF document.")
+                    # Read the PDF text structure natively in Python (No Poppler required!)
+                    pdf_file = io.BytesIO(file_bytes)
+                    reader = PdfReader(pdf_file)
+                    extracted_text = ""
+                    
+                    for page in reader.pages:
+                        extracted_text += page.extract_text() + "\n"
+                    
+                    if not extracted_text.strip():
+                        st.error("The uploaded PDF seems to be an image/scanned document with no text layer. Please use a digital PDF.")
                         st.stop()
                     
-                    # Process the first page for header information and item records
-                    first_page = images[0]
-                    img_buffer = io.BytesIO()
-                    first_page.save(img_buffer, format="JPEG")
-                    encoded_image = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
-                    data_url = f"data:image/jpeg;base64,{encoded_image}"
-                    
-                    prompt = """
-                    Analyze this purchase order document image.
+                    prompt = f"""
+                    You are a data entry assistant. Analyze the raw text extracted from a purchase order below.
                     
                     On the very first line of your output text, extract the main header information in exactly this format:
                     HEADER | Restaurant Name | PO Number | Date
@@ -66,6 +64,9 @@ if api_key:
                     Department | Chinese Item Name | English Name & Spec | Qty | Price | Total
                     
                     Do not include markdown table structures, introduction sentences, or code blocks. Just output raw text lines separated by |.
+                    
+                    Raw Document Text:
+                    {extracted_text}
                     """
                     
                     headers = {
@@ -75,24 +76,13 @@ if api_key:
                         "X-Title": "PO Extractor"
                     }
                     
-                    # Using Qwen2.5-VL via OpenRouter: Perfect visual parsing that accepts image data blocks cleanly
+                    # Back to DeepSeek-Chat as it is optimized for high-volume text analysis
                     payload = {
-                        "model": "qwen/qwen2.5-vl-72b-instruct",
+                        "model": "deepseek/deepseek-chat",
                         "messages": [
                             {
                                 "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": prompt
-                                    },
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": data_url
-                                        }
-                                    }
-                                ]
+                                "content": prompt
                             }
                         ]
                     }
@@ -104,11 +94,6 @@ if api_key:
                         st.stop()
                         
                     response_json = response.json()
-                    
-                    if "choices" not in response_json:
-                        st.error(f"API ran successfully but model failed: {response_json}")
-                        st.stop()
-                        
                     ai_output = response_json["choices"][0]["message"]["content"]
                     
                     doc = Document()
@@ -122,7 +107,7 @@ if api_key:
                     hdr_cells = table.rows.cells
                     for i, title in enumerate(headers_list):
                         hdr_cells[i].width = col_widths[i]
-                        style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
+                        style_text_element(hdr_cells[i].paragraphs, title, size_pt=9, bold=True)
                     
                     lines = ai_output.strip().split('\n')
                     grand_total = 0.0
@@ -131,8 +116,8 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # Safely map separate indexes into strings
-                            if "HEADER" in parts[0] and len(parts) >= 4:
+                            # Safely handle header placement matching the indices
+                            if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
@@ -145,7 +130,7 @@ if api_key:
                                 row_cells = table.add_row().cells
                                 for i in range(6):
                                     row_cells[i].width = col_widths[i]
-                                    style_text_element(row_cells[i].paragraphs[0], parts[i], size_pt=9, bold=False)
+                                    style_text_element(row_cells[i].paragraphs, parts[i], size_pt=9, bold=False)
                                 
                                 try:
                                     clean_total_str = re.sub(r'[^\d.]', '', parts[5])
@@ -159,8 +144,8 @@ if api_key:
                     for i in range(6):
                         footer_cells[i].width = col_widths[i]
                         
-                    style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
-                    style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
+                    style_text_element(footer_cells[0].paragraphs, "Grand Total", size_pt=9, bold=True)
+                    style_text_element(footer_cells[5].paragraphs, f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
                     for row in table.rows:
                         for cell in row.cells:
