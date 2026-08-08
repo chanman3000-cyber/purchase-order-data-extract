@@ -27,7 +27,6 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-# Helper function to clear cell borders for no-0 line spacing effect
 def clear_cell_borders(cell):
     tcPr = cell._tc.get_or_add_tcPr()
     tcBorders = OxmlElement('w:tcBorders')
@@ -104,7 +103,6 @@ if api_key:
                     
                     lines = ai_output.strip().split('\n')
                     
-                    # Track data by department dynamically
                     departments = {}
                     restaurant_name, po_number, po_date = "中翠", "P350716", "08-08-2026"
                     
@@ -121,7 +119,6 @@ if api_key:
                                     departments[dept] = []
                                 departments[dept].append(parts[1:])
                     
-                    # Write metadata headers at the top
                     p1 = doc.add_paragraph()
                     style_text_element(p1, f"Restaurant Name: {restaurant_name}", size_pt=11, bold=True)
                     p2 = doc.add_paragraph()
@@ -132,12 +129,10 @@ if api_key:
                     
                     grand_total = 0.0
                     
-                    # Generate a clean, borderless list layout grouped by Department
                     for dept, items in departments.items():
                         h_p = doc.add_paragraph()
                         style_text_element(h_p, f"Department: {dept}", size_pt=10, bold=True)
                         
-                        # Create table layout grid
                         headers_list = ['Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price', 'Total']
                         table = doc.add_table(rows=1, cols=5)
                         table.allow_autofit = False
@@ -160,16 +155,14 @@ if api_key:
                                 clean_total_str = re.sub(r'[^\d.]', '', item[4])
                                 if clean_total_str:
                                     grand_total += float(clean_total_str)
-                              except ValueError:
+                            except ValueError:
                                 pass
                         
-                        doc.add_paragraph("") # Space between departments
+                        doc.add_paragraph("")
                     
-                    # Append Final Grand Total amount string at the end
                     p_tot = doc.add_paragraph()
                     style_text_element(p_tot, f"Grand Total Amount: ${grand_total:,.2f}", size_pt=10, bold=True)
                     
-                    # Force tight 0 line spacing metrics globally
                     for table in doc.tables:
                         for row in table.rows:
                             for cell in row.cells:
