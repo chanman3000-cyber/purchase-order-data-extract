@@ -1,5 +1,4 @@
 requests
 python-docx
 streamlit
-pdf2image
-pillow
+pypdf
