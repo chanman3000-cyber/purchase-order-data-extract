@@ -1,5 +1,5 @@
 import streamlit as st
-from mistralai import Mistral
+import requests
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
@@ -27,15 +27,12 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-# Looks for your hidden Mistral API key inside your cloud secrets configuration
 if "MISTRAL_API_KEY" in st.secrets:
     api_key = st.secrets["MISTRAL_API_KEY"]
 else:
     api_key = None
 
 if api_key:
-    # Initialize the official Mistral AI client
-    client = Mistral(api_key=api_key)
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
@@ -71,19 +68,32 @@ if api_key:
                     {extracted_text}
                     """
                     
-                    # Direct, fast API call to Mistral Large (fully allowed in HK)
-                    chat_response = client.chat.complete(
-                        model="mistral-large-latest",
-                        messages=[
+                    headers = {
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    payload = {
+                        "model": "mistral-large-latest",
+                        "messages": [
                             {
                                 "role": "user",
                                 "content": prompt
                             }
                         ],
-                        temperature=0.0
-                    )
+                        "parameters": {
+                            "temperature": 0.0
+                        }
+                    }
                     
-                    ai_output = chat_response.choices[0].message.content
+                    response = requests.post("https://mistral.ai", headers=headers, json=payload)
+                    
+                    if response.status_code != 200:
+                        st.error(f"Mistral Cloud Gateway Error (Status {response.status_code}): {response.text}")
+                        st.stop()
+                        
+                    response_json = response.json()
+                    ai_output = response_json["choices"][0]["message"]["content"]
                     
                     doc = Document()
                     col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
@@ -139,7 +149,6 @@ if api_key:
                     style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
-                    # Lock spacing parameters down to zero
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
