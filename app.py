@@ -7,6 +7,7 @@ from docx.oxml.ns import qn
 import io
 import re
 import base64
+from pdf2image import convert_from_bytes
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
 st.title("📄 Purchase Order Data Extractor (Unrestricted HK Engine)")
@@ -40,13 +41,22 @@ if api_key:
             with st.spinner("Extracting data via unrestricted cloud channel..."):
                 try:
                     file_bytes = uploaded_file.read()
-                    encoded_file = base64.b64encode(file_bytes).decode("utf-8")
                     
-                    # Construct a valid, standards-compliant inline Base64 data string URL
-                    data_url = f"data:application/pdf;base64,{encoded_file}"
+                    # Convert PDF pages directly to images in memory to safely bypass OpenRouter file crashes
+                    images = convert_from_bytes(file_bytes)
+                    if not images:
+                        st.error("Failed to parse pages from the uploaded PDF document.")
+                        st.stop()
+                    
+                    # Process the first page for header information and item records
+                    first_page = images[0]
+                    img_buffer = io.BytesIO()
+                    first_page.save(img_buffer, format="JPEG")
+                    encoded_image = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
+                    data_url = f"data:image/jpeg;base64,{encoded_image}"
                     
                     prompt = """
-                    Analyze this purchase order document.
+                    Analyze this purchase order document image.
                     
                     On the very first line of your output text, extract the main header information in exactly this format:
                     HEADER | Restaurant Name | PO Number | Date
@@ -65,9 +75,9 @@ if api_key:
                         "X-Title": "PO Extractor"
                     }
                     
-                    # FIX: Format payload exactly to OpenRouter requirements: type is "file", and it uses "file_data" containing a Data URL
+                    # Using Qwen2.5-VL via OpenRouter: Perfect visual parsing that accepts image data blocks cleanly
                     payload = {
-                        "model": "google/gemini-2.5-flash",
+                        "model": "qwen/qwen2.5-vl-72b-instruct",
                         "messages": [
                             {
                                 "role": "user",
@@ -77,9 +87,9 @@ if api_key:
                                         "text": prompt
                                     },
                                     {
-                                        "type": "file",
-                                        "file": {
-                                            "file_data": data_url
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": data_url
                                         }
                                     }
                                 ]
@@ -89,7 +99,6 @@ if api_key:
                     
                     response = requests.post("https://openrouter.ai", headers=headers, json=payload)
                     
-                    # If OpenRouter returns an error, catch it before it crashes the json parser
                     if response.status_code != 200:
                         st.error(f"OpenRouter Gateway Error (Status {response.status_code}): {response.text}")
                         st.stop()
@@ -122,8 +131,8 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # Safely unpack the metadata row if it matches the header format
-                            if "HEADER" in parts and len(parts) >= 4:
+                            # Safely map separate indexes into strings
+                            if "HEADER" in parts[0] and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
