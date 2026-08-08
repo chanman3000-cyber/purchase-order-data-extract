@@ -1,7 +1,7 @@
 import streamlit as st
 from google import genai
 from docx import Document
-from docx.shared import Pt
+from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 import io
@@ -9,7 +9,7 @@ import re
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
 st.title("📄 Purchase Order Data Extractor")
-st.write("Upload a PO document to extract items into a tight MingLiU table format.")
+st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
 # Helper function to apply tight 9pt MingLiU font to elements
 def style_text_element(paragraph, text, size_pt=9, bold=False):
@@ -71,14 +71,19 @@ if api_key:
                     
                     doc = Document()
                     
+                    # Define explicit clean column widths in inches (Total = 6.5 inches)
+                    col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
+                    
                     # Create the main item table structure
-                    headers = ['Department', 'Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price (HKD)', 'Total Amount (HKD)']
+                    headers = ['Department', 'Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price', 'Total']
                     table = doc.add_table(rows=1, cols=6)
                     table.style = 'Table Grid'
+                    table.allow_autofit = False  # Lock to use our explicit widths
                     
-                    # Add Header Row
+                    # Add Header Row and set cell sizes
                     hdr_cells = table.rows[0].cells
                     for i, title in enumerate(headers):
+                        hdr_cells[i].width = col_widths[i]
                         style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
                     
                     lines = response.text.strip().split('\n')
@@ -88,7 +93,7 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # Parse Header Line and add to the top of the Word Doc
+                            # Parse Metadata Header Line
                             if parts[0] == "HEADER" and len(parts) == 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
@@ -102,9 +107,10 @@ if api_key:
                             elif len(parts) == 6:
                                 row_cells = table.add_row().cells
                                 for i in range(6):
+                                    row_cells[i].width = col_widths[i]
                                     style_text_element(row_cells[i].paragraphs[0], parts[i], size_pt=9, bold=False)
                                 
-                                # Safely convert the Total string to a float number for calculating the grand total
+                                # Safely clean data and add to total calculations
                                 try:
                                     clean_total_str = re.sub(r'[^\d.]', '', parts[5])
                                     if clean_total_str:
@@ -113,8 +119,14 @@ if api_key:
                                     pass
                     
                     # Add calculated Grand Total row at the very bottom
-                    footer_cells = table.add_row().cells
-                    style_text_element(footer_cells[0].paragraphs[0], "Grand Total Amount", size_pt=9, bold=True)
+                    footer_row = table.add_row()
+                    footer_cells = footer_row.cells
+                    
+                    # Format footer widths to match the rest of the table grid
+                    for i in range(6):
+                        footer_cells[i].width = col_widths[i]
+                        
+                    style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
                     # Double-verify explicit strict tight item cell properties 
