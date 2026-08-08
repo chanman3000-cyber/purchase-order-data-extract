@@ -33,7 +33,6 @@ else:
     api_key = None
 
 if api_key:
-    # Restrict input to PDF only for universal OpenRouter file parsing compliance
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
@@ -63,9 +62,9 @@ if api_key:
                         "X-Title": "PO Extractor"
                     }
                     
-                    # FIX: Uses OpenRouter's native 'file' configuration payload block with 'application/pdf' mime specification
+                    # FIX: Switch endpoint to gemini-2.5-flash via OpenRouter for native document handling
                     payload = {
-                        "model": "deepseek/deepseek-chat",
+                        "model": "google/gemini-2.5-flash",
                         "messages": [
                             {
                                 "role": "user",
@@ -86,9 +85,8 @@ if api_key:
                         ]
                     }
                     
-                    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
                     
-                    # Safeguard: Intercept server level anomalies to prevent JSONDecode errors 
                     if response.status_code != 200:
                         st.error(f"OpenRouter Gateway Error (Status {response.status_code}): {response.text}")
                         st.stop()
@@ -112,7 +110,7 @@ if api_key:
                     hdr_cells = table.rows.cells
                     for i, title in enumerate(headers_list):
                         hdr_cells[i].width = col_widths[i]
-                        style_text_element(hdr_cells[i].paragraphs, title, size_pt=9, bold=True)
+                        style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
                     
                     lines = ai_output.strip().split('\n')
                     grand_total = 0.0
@@ -121,7 +119,7 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            if "HEADER" in parts and len(parts) >= 4:
+                            if parts[0] == "HEADER" and len(parts) == 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
@@ -134,7 +132,7 @@ if api_key:
                                 row_cells = table.add_row().cells
                                 for i in range(6):
                                     row_cells[i].width = col_widths[i]
-                                    style_text_element(row_cells[i].paragraphs, parts[i], size_pt=9, bold=False)
+                                    style_text_element(row_cells[i].paragraphs[0], parts[i], size_pt=9, bold=False)
                                 
                                 try:
                                     clean_total_str = re.sub(r'[^\d.]', '', parts[5])
@@ -148,8 +146,8 @@ if api_key:
                     for i in range(6):
                         footer_cells[i].width = col_widths[i]
                         
-                    style_text_element(footer_cells[0].paragraphs, "Grand Total", size_pt=9, bold=True)
-                    style_text_element(footer_cells[5].paragraphs, f"${grand_total:,.2f}", size_pt=9, bold=True)
+                    style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
+                    style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
                     for row in table.rows:
                         for cell in row.cells:
