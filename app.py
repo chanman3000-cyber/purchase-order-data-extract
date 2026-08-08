@@ -17,7 +17,7 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     paragraph.paragraph_format.space_after = Pt(0)
     paragraph.paragraph_format.line_spacing = 1.0
     
-    run = paragraph.add_run(text)
+    run = paragraph.add_run(str(text))
     run.bold = bold
     run.font.name = 'MingLiU'
     run.font.size = Pt(size_pt)
@@ -41,7 +41,7 @@ if api_key:
                 try:
                     file_bytes = uploaded_file.read()
                     
-                    # Read the PDF text structure natively in Python (No Poppler required!)
+                    # Read the PDF text structure natively in Python
                     pdf_file = io.BytesIO(file_bytes)
                     reader = PdfReader(pdf_file)
                     extracted_text = ""
@@ -76,7 +76,6 @@ if api_key:
                         "X-Title": "PO Extractor"
                     }
                     
-                    # Back to DeepSeek-Chat as it is optimized for high-volume text analysis
                     payload = {
                         "model": "deepseek/deepseek-chat",
                         "messages": [
@@ -87,13 +86,23 @@ if api_key:
                         ]
                     }
                     
-                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
+                    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
                     
+                    # SAFEGUARD: Capture and display any network errors transparently before decoding JSON
                     if response.status_code != 200:
-                        st.error(f"OpenRouter Gateway Error (Status {response.status_code}): {response.text}")
+                        st.error(f"OpenRouter Connection Error (Status {response.status_code}): {response.text}")
                         st.stop()
                         
-                    response_json = response.json()
+                    try:
+                        response_json = response.json()
+                    except Exception:
+                        st.error(f"Failed to parse server response as data. Raw Server output: {response.text}")
+                        st.stop()
+                    
+                    if "choices" not in response_json:
+                        st.error(f"API key verified, but server dropped request logic: {response_json}")
+                        st.stop()
+                        
                     ai_output = response_json["choices"][0]["message"]["content"]
                     
                     doc = Document()
@@ -107,7 +116,7 @@ if api_key:
                     hdr_cells = table.rows.cells
                     for i, title in enumerate(headers_list):
                         hdr_cells[i].width = col_widths[i]
-                        style_text_element(hdr_cells[i].paragraphs, title, size_pt=9, bold=True)
+                        style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
                     
                     lines = ai_output.strip().split('\n')
                     grand_total = 0.0
@@ -116,8 +125,8 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # Safely handle header placement matching the indices
-                            if "HEADER" in parts and len(parts) >= 4:
+                            # CRITICAL FIX: Targeted exact positional slice indices (e.g. parts[1]) instead of pushing a raw list
+                            if "HEADER" in parts[0] and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
@@ -130,7 +139,7 @@ if api_key:
                                 row_cells = table.add_row().cells
                                 for i in range(6):
                                     row_cells[i].width = col_widths[i]
-                                    style_text_element(row_cells[i].paragraphs, parts[i], size_pt=9, bold=False)
+                                    style_text_element(row_cells[i].paragraphs[0], parts[i], size_pt=9, bold=False)
                                 
                                 try:
                                     clean_total_str = re.sub(r'[^\d.]', '', parts[5])
@@ -139,14 +148,16 @@ if api_key:
                                 except ValueError:
                                     pass
                     
+                    # Generate Totals calculation grid footer properties
                     footer_row = table.add_row()
                     footer_cells = footer_row.cells
                     for i in range(6):
                         footer_cells[i].width = col_widths[i]
                         
-                    style_text_element(footer_cells[0].paragraphs, "Grand Total", size_pt=9, bold=True)
-                    style_text_element(footer_cells[5].paragraphs, f"${grand_total:,.2f}", size_pt=9, bold=True)
+                    style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
+                    style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
+                    # Force strict line height padding to 0 properties
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
