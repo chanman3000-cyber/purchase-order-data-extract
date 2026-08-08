@@ -1,4 +1,4 @@
-requests
+groq
 python-docx
 streamlit
 pypdf
