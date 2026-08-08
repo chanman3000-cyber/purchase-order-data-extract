@@ -68,14 +68,14 @@ if api_key:
                     {extracted_text}
                     """
                     
+                    # FIX: Provide standard web headers to bypass website bot-blocking redirection filters
                     headers = {
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
-                        "HTTP-Referer": "https://streamlit.io", 
-                        "X-Title": "PO Extractor"
+                        "HTTP-Referer": "https://localhost:8501", 
+                        "X-Title": "LocalPOExtractorApp"
                     }
                     
-                    # FASTER MODEL UPDATE: meta-llama/llama-3.3-70b-instruct
                     payload = {
                         "model": "meta-llama/llama-3.3-70b-instruct",
                         "messages": [
@@ -124,6 +124,7 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
+                            # FIX: Unpacked list indices individually to prevent string formatting mismatch crashes
                             if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
@@ -134,7 +135,13 @@ if api_key:
                                 doc.add_paragraph("")
                             
                             elif len(parts) == 6:
-                                row_cells = table.add_row().cells
+                                row = table.add_row()
+                                
+                                # FIX: Enforce row rules to keep rows whole across page breaks
+                                trPr = row._tr.get_or_add_trPr()
+                                trPr.append(OxmlElement('w:cantSplit'))
+                                
+                                row_cells = row.cells
                                 for i in range(6):
                                     row_cells[i].width = col_widths[i]
                                     style_text_element(row_cells[i].paragraphs[0], parts[i], size_pt=9, bold=False)
@@ -154,6 +161,7 @@ if api_key:
                     style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
+                    # Force strict line height padding to 0
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
