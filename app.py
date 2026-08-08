@@ -1,5 +1,5 @@
 import streamlit as st
-from openai import OpenAI
+from mistralai import Mistral
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
@@ -9,7 +9,7 @@ import re
 from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor (Unrestricted Core Engine)")
+st.title("📄 Purchase Order Data Extractor (Mistral Europe Pipeline)")
 st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
 def style_text_element(paragraph, text, size_pt=9, bold=False):
@@ -27,20 +27,20 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-# Look for the hidden OpenAI API Key in your cloud settings
-if "OPENAI_API_KEY" in st.secrets:
-    api_key = st.secrets["OPENAI_API_KEY"]
+# Looks for your hidden Mistral API key inside your cloud secrets configuration
+if "MISTRAL_API_KEY" in st.secrets:
+    api_key = st.secrets["MISTRAL_API_KEY"]
 else:
     api_key = None
 
 if api_key:
-    # Initialize the official OpenAI backend client
-    client = OpenAI(api_key=api_key)
+    # Initialize the official Mistral AI client
+    client = Mistral(api_key=api_key)
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Extracting data via unrestricted cloud channel..."):
+            with st.spinner("Extracting data via unrestricted European gateway..."):
                 try:
                     file_bytes = uploaded_file.read()
                     
@@ -71,9 +71,9 @@ if api_key:
                     {extracted_text}
                     """
                     
-                    # High-speed processing call via gpt-4o-mini
-                    completion = client.chat.completions.create(
-                        model="gpt-4o-mini",
+                    # Direct, fast API call to Mistral Large (fully allowed in HK)
+                    chat_response = client.chat.complete(
+                        model="mistral-large-latest",
                         messages=[
                             {
                                 "role": "user",
@@ -83,7 +83,7 @@ if api_key:
                         temperature=0.0
                     )
                     
-                    ai_output = completion.choices[0].message.content
+                    ai_output = chat_response.choices[0].message.content
                     
                     doc = Document()
                     col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
@@ -139,7 +139,7 @@ if api_key:
                     style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
-                    # Force strict line height padding to 0
+                    # Lock spacing parameters down to zero
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
@@ -163,4 +163,4 @@ if api_key:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Missing OpenAI API Key. Please add it to your Streamlit Cloud Secrets settings.")
+    st.error("Missing Mistral API Key. Please add it to your Streamlit Cloud Secrets settings.")
