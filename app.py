@@ -9,7 +9,7 @@ import re
 from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor (Mistral Europe Pipeline)")
+st.title("📄 Purchase Order Data Extractor (Stable Global Engine)")
 st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
 def style_text_element(paragraph, text, size_pt=9, bold=False):
@@ -27,8 +27,9 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-if "MISTRAL_API_KEY" in st.secrets:
-    api_key = st.secrets["MISTRAL_API_KEY"]
+# Looks for your hidden GitHub Token string in Cloud Secrets
+if "GITHUB_TOKEN" in st.secrets:
+    api_key = st.secrets["GITHUB_TOKEN"]
 else:
     api_key = None
 
@@ -37,7 +38,7 @@ if api_key:
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Extracting data via unrestricted European gateway..."):
+            with st.spinner("Processing via secure global marketplace proxy..."):
                 try:
                     file_bytes = uploaded_file.read()
                     
@@ -68,13 +69,14 @@ if api_key:
                     {extracted_text}
                     """
                     
+                    # Call the secure global proxy endpoint (unrestricted in HK)
                     headers = {
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json"
                     }
                     
                     payload = {
-                        "model": "mistral-large-latest",
+                        "model": "meta-llama-3.3-70b-instruct",
                         "messages": [
                             {
                                 "role": "user",
@@ -84,11 +86,14 @@ if api_key:
                         "temperature": 0.0
                     }
                     
-                    # CORRECT ENDPOINT URL LINK ACCORDING TO SPECS
-                    response = requests.post("https://mistral.ai", headers=headers, json=payload)
+                    response = requests.post(
+                        "https://azure.com", 
+                        headers=headers, 
+                        json=payload
+                    )
                     
                     if response.status_code != 200:
-                        st.error(f"Mistral Cloud Gateway Error (Status {response.status_code}): {response.text}")
+                        st.error(f"Global Proxy Error (Status {response.status_code}): {response.text}")
                         st.stop()
                         
                     response_json = response.json()
@@ -114,7 +119,6 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # CORRECT PARSING FOR SINGLE HEADER PARAMETERS 
                             if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
@@ -149,7 +153,7 @@ if api_key:
                     style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
-                    # Force strict line height padding to 0
+                    # Lock spacing parameters down tightly to 0
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
@@ -173,4 +177,4 @@ if api_key:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Missing Mistral API Key. Please add it to your Streamlit Cloud Secrets settings.")
+    st.error("Missing GitHub Token. Please add it to your Streamlit Cloud Secrets settings.")
