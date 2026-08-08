@@ -12,7 +12,6 @@ st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
 st.title("📄 Purchase Order Data Extractor (Unrestricted HK Engine)")
 st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
-# Helper function to apply tight 9pt MingLiU font to elements
 def style_text_element(paragraph, text, size_pt=9, bold=False):
     paragraph.paragraph_format.space_before = Pt(0)
     paragraph.paragraph_format.space_after = Pt(0)
@@ -23,13 +22,11 @@ def style_text_element(paragraph, text, size_pt=9, bold=False):
     run.font.name = 'MingLiU'
     run.font.size = Pt(size_pt)
     
-    # Force Microsoft Word to recognize the MingLiU font for Chinese characters
     rPr = run._r.get_or_add_rPr()
     rFonts = OxmlElement('w:rFonts')
     rFonts.set(qn('w:eastAsia'), 'MingLiU')
     rPr.append(rFonts)
 
-# Look for the hidden OpenRouter key in cloud secrets
 if "OPENROUTER_API_KEY" in st.secrets:
     api_key = st.secrets["OPENROUTER_API_KEY"]
 else:
@@ -59,12 +56,14 @@ if api_key:
                     Do not include markdown table structures, introduction sentences, or code blocks. Just output raw text lines separated by |.
                     """
                     
-                    # Call OpenRouter API using DeepSeek model (Completely unrestricted in HK)
                     headers = {
                         "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://streamlit.io", 
+                        "X-Title": "PO Extractor"
                     }
                     
+                    # UPDATED DATA STRUCTURE: Feeds data into the content array matching the OpenRouter specification
                     payload = {
                         "model": "deepseek/deepseek-chat",
                         "messages": [
@@ -87,15 +86,23 @@ if api_key:
                     }
                     
                     response = requests.post("https://openrouter.ai", headers=headers, json=payload)
+                    
+                    # Diagnostic check to see exactly what OpenRouter is saying if it breaks
+                    if response.status_code != 200:
+                        st.error(f"Server Error (Code {response.status_code}): {response.text}")
+                        st.stop()
+                        
                     response_json = response.json()
+                    
+                    if "choices" not in response_json:
+                        st.error(f"Unexpected response layout: {response_json}")
+                        st.stop()
+                        
                     ai_output = response_json["choices"][0]["message"]["content"]
                     
                     doc = Document()
-                    
-                    # Explicit column widths (Total = 6.5 inches)
                     col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
                     
-                    # Create document table structure
                     headers_list = ['Department', 'Chinese Item Name', 'English Translation & Specs', 'Qty', 'Price', 'Total']
                     table = doc.add_table(rows=1, cols=6)
                     table.style = 'Table Grid'
@@ -113,8 +120,7 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # Parse Metadata Header
-                            if "HEADER" in parts[0] and len(parts) >= 4:
+                            if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
@@ -123,7 +129,6 @@ if api_key:
                                 style_text_element(p3, f"Date: {parts[3]}", size_pt=11, bold=True)
                                 doc.add_paragraph("")
                             
-                            # Parse Line Items
                             elif len(parts) == 6:
                                 row_cells = table.add_row().cells
                                 for i in range(6):
@@ -137,7 +142,6 @@ if api_key:
                                 except ValueError:
                                     pass
                     
-                    # Add calculated Grand Total row at the bottom
                     footer_row = table.add_row()
                     footer_cells = footer_row.cells
                     for i in range(6):
@@ -146,7 +150,6 @@ if api_key:
                     style_text_element(footer_cells[0].paragraphs, "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs, f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
-                    # Set tight item spacing to zero 
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
