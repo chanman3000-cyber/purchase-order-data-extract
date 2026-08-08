@@ -36,17 +36,20 @@ def clear_cell_borders(cell):
         tcBorders.append(border)
     tcPr.append(tcBorders)
 
-if "OPENROUTER_API_KEY" in st.secrets:
-    api_key = st.secrets["OPENROUTER_API_KEY"]
+# Look for your hidden Cloudflare credentials inside Cloud Secrets
+if "CLOUDFLARE_API_TOKEN" in st.secrets and "CLOUDFLARE_ACCOUNT_ID" in st.secrets:
+    api_token = st.secrets["CLOUDFLARE_API_TOKEN"]
+    account_id = st.secrets["CLOUDFLARE_ACCOUNT_ID"]
 else:
-    api_key = None
+    api_token = None
+    account_id = None
 
-if api_key:
+if api_token and account_id:
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Translating and structuring via open global channel..."):
+            with st.spinner("Translating and structuring via unrestricted Cloudflare pipeline..."):
                 try:
                     file_bytes = uploaded_file.read()
                     
@@ -78,32 +81,33 @@ if api_key:
                     {extracted_text}
                     """
                     
+                    # Direct connection to Cloudflare Workers AI regional cluster
                     headers = {
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "https://localhost:8501", 
-                        "X-Title": "LocalPOExtractor"
+                        "Authorization": f"Bearer {api_token}",
+                        "Content-Type": "application/json"
                     }
                     
-                    # Target stable DeepSeek V3 routing on OpenRouter nodes
                     payload = {
-                        "model": "deepseek/deepseek-chat",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.0
+                        "messages": [{"role": "user", "content": prompt}]
                     }
                     
-                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
+                    url = f"https://cloudflare.com{account_id}/ai/run/@cf/meta/llama-3.3-70b-instruct"
+                    response = requests.post(url, headers=headers, json=payload)
                     
                     if response.status_code != 200:
-                        st.error(f"OpenRouter Connectivity Error (Status {response.status_code}): {response.text}")
+                        st.error(f"Cloudflare Server Error (Status {response.status_code}): {response.text}")
                         st.stop()
                         
                     response_json = response.json()
-                    ai_output = response_json["choices"][0]["message"]["content"]
+                    
+                    if "result" not in response_json or "response" not in response_json["result"]:
+                        st.error(f"Response format mismatch: {response_json}")
+                        st.stop()
+                        
+                    ai_output = response_json["result"]["response"]
                     
                     doc = Document()
                     col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
-                    
                     lines = ai_output.strip().split('\n')
                     
                     departments = {}
@@ -189,4 +193,4 @@ if api_key:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Please add OPENROUTER_API_KEY to your Streamlit Cloud Secrets settings to unlock translations.")
+    st.error("Missing Cloudflare Settings. Please add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID to your Streamlit Cloud Secrets settings.")
