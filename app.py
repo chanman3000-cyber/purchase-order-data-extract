@@ -82,7 +82,6 @@ if api_token:
                         "Content-Type": "application/json"
                     }
                     
-                    # FIX: Enforce explicit structural System and User schema messages required by Cloudflare gateway
                     payload = {
                         "messages": [
                             {
@@ -99,7 +98,6 @@ if api_token:
                     url = "https://cloudflare.com"
                     response = requests.post(url, headers=headers, json=payload)
                     
-                    # SAFEGUARD: Catch and output server-level anomalies before checking the json layout data
                     if response.status_code != 200:
                         st.error(f"Cloudflare Gateway Connection Issue (Status {response.status_code}): {response.text}")
                         st.stop()
@@ -197,3 +195,6 @@ if api_token:
                     )
                     
                 except Exception as e:
+                    st.error(f"An error occurred: {e}")
+else:
+    st.error("Missing Cloudflare Settings. Please add CLOUDFLARE_API_TOKEN to your Streamlit Cloud Secrets settings.")
