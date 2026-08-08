@@ -1,5 +1,5 @@
 import streamlit as st
-import requests
+from google import genai
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.oxml import OxmlElement
@@ -9,8 +9,8 @@ import re
 from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor (Stable Global Engine)")
-st.write("Upload a PO document to translate items into a structured MingLiU table layout.")
+st.title("📄 Universal Purchase Order Data Extractor")
+st.write("Upload any PO document to extract, translate, and group items into a clean, borderless layout.")
 
 def style_text_element(paragraph, text, size_pt=9, bold=False):
     paragraph.paragraph_format.space_before = Pt(0)
@@ -36,23 +36,27 @@ def clear_cell_borders(cell):
         tcBorders.append(border)
     tcPr.append(tcBorders)
 
-if "CLOUDFLARE_API_TOKEN" in st.secrets:
-    api_token = st.secrets["CLOUDFLARE_API_TOKEN"]
+# Look for the hidden Google API key in cloud secrets
+if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
 else:
-    api_token = None
+    api_key = None
 
-if api_token:
+if api_key:
+    # Initialize the official Google GenAI Client
+    client = genai.Client(api_key=api_key)
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Translating and structuring via unrestricted Cloudflare pipeline..."):
+            with st.spinner("Analyzing, translating, and structuring document via Gemini AI..."):
                 try:
                     file_bytes = uploaded_file.read()
+                    
+                    # Read the PDF text layer on the server
                     pdf_file = io.BytesIO(file_bytes)
                     reader = PdfReader(pdf_file)
                     extracted_text = ""
-                    
                     for page in reader.pages:
                         extracted_text += page.extract_text() + "\n"
                     
@@ -67,7 +71,7 @@ if api_token:
                     HEADER | Restaurant Name | PO Number | Date
                     
                     After that first header line, list all items grouped by their department.
-                    Translate the item names to English, including specifications if applicable.
+                    Translate the item names to English, including specifications if applicable. Even if you see brand-new items, translate them contextually.
                     For each item, extract exactly these fields separated by a pipe character (|):
                     Department | Chinese Item Name | English Translation & Specs | Qty | Price | Total
                     
@@ -77,38 +81,13 @@ if api_token:
                     {extracted_text}
                     """
                     
-                    headers = {
-                        "Authorization": f"Bearer {api_token}",
-                        "Content-Type": "application/json"
-                    }
+                    # Call official Gemini 2.5 Flash endpoint (unrestricted from the US cloud host hosting the app)
+                    response = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt,
+                    )
                     
-                    payload = {
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are a professional multilingual data entry assistant. Only output raw structured text separated by pipe characters without any introduction or markdown tables."
-                            },
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
-                        ]
-                    }
-                    
-                    url = "https://cloudflare.com"
-                    response = requests.post(url, headers=headers, json=payload)
-                    
-                    if response.status_code != 200:
-                        st.error(f"Cloudflare Gateway Connection Issue (Status {response.status_code}): {response.text}")
-                        st.stop()
-                        
-                    response_json = response.json()
-                    
-                    if "result" not in response_json or "response" not in response_json["result"]:
-                        st.error(f"Response data layout mismatch from server: {response_json}")
-                        st.stop()
-                        
-                    ai_output = response_json["result"]["response"]
+                    ai_output = response.text
                     
                     doc = Document()
                     col_widths = [Inches(1.0), Inches(1.3), Inches(2.2), Inches(0.6), Inches(0.7), Inches(0.7)]
@@ -121,9 +100,9 @@ if api_token:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             if "HEADER" in parts and len(parts) >= 4:
-                                restaurant_name = parts[1] if len(parts) > 1 else "中翠"
-                                po_number = parts[2] if len(parts) > 2 else "P350716"
-                                po_date = parts[3] if len(parts) > 3 else "08-08-2026"
+                                restaurant_name = parts[1] if parts[1] else "中翠"
+                                po_number = parts[2] if parts[2] else "P350716"
+                                po_date = parts[3] if parts[3] else "08-08-2026"
                             elif len(parts) == 6:
                                 dept = parts[0]
                                 if dept not in departments:
@@ -148,10 +127,10 @@ if api_token:
                         table = doc.add_table(rows=1, cols=5)
                         table.allow_autofit = False
                         
-                        hdr_cells = table.rows.cells
+                        hdr_cells = table.rows[cells]
                         for i, title in enumerate(headers_list):
                             hdr_cells[i].width = col_widths[i+1]
-                            style_text_element(hdr_cells[i].paragraphs, title, size_pt=9, bold=True)
+                            style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
                             clear_cell_borders(hdr_cells[i])
                         
                         for item in items:
@@ -159,7 +138,7 @@ if api_token:
                             row_cells = row.cells
                             for i in range(5):
                                 row_cells[i].width = col_widths[i+1]
-                                style_text_element(row_cells[i].paragraphs, item[i], size_pt=9, bold=False)
+                                style_text_element(row_cells[i].paragraphs[0], item[i], size_pt=9, bold=False)
                                 clear_cell_borders(row_cells[i])
                             
                             try:
@@ -197,4 +176,4 @@ if api_token:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Missing Cloudflare Settings. Please add CLOUDFLARE_API_TOKEN to your Streamlit Cloud Secrets settings.")
+    st.error("Missing Gemini API Key. Please add GEMINI_API_KEY to your Streamlit Cloud Secrets settings.")
