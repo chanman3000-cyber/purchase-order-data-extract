@@ -38,20 +38,22 @@ def clear_cell_borders(cell):
 
 if "CLOUDFLARE_API_TOKEN" in st.secrets and "CLOUDFLARE_ACCOUNT_ID" in st.secrets:
     api_token = st.secrets["CLOUDFLARE_API_TOKEN"]
-    account_id = st.secrets["CLOUDFLARE_ACCOUNT_ID"]
+    raw_account_id = st.secrets["CLOUDFLARE_ACCOUNT_ID"]
 else:
     api_token = None
-    account_id = None
+    raw_account_id = None
 
-if api_token and account_id:
+if api_token and raw_account_id:
     uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
             with st.spinner("Translating and structuring via unrestricted Cloudflare pipeline..."):
                 try:
-                    file_bytes = uploaded_file.read()
+                    # BULLETPROOF CLEANER: Strips domains like 'cloudflare.com' or spaces if they get pasted accidentally
+                    clean_id = re.sub(r'[^a-zA-Z0-9]', '', str(raw_account_id)).replace('cloudflarecom', '').strip()
                     
+                    file_bytes = uploaded_file.read()
                     pdf_file = io.BytesIO(file_bytes)
                     reader = PdfReader(pdf_file)
                     extracted_text = ""
@@ -89,8 +91,8 @@ if api_token and account_id:
                         "messages": [{"role": "user", "content": prompt}]
                     }
                     
-                    # CRITICAL URL FIX: Cleaned and separated the account ID string injection
-                    url = f"https://cloudflare.com{account_id.strip()}/ai/run/@cf/meta/llama-3.3-70b-instruct"
+                    # Direct API endpoint target layout using the safe string token
+                    url = f"https://cloudflare.com{clean_id}/ai/run/@cf/meta/llama-3.3-70b-instruct"
                     response = requests.post(url, headers=headers, json=payload)
                     
                     if response.status_code != 200:
@@ -143,10 +145,10 @@ if api_token and account_id:
                         table = doc.add_table(rows=1, cols=5)
                         table.allow_autofit = False
                         
-                        hdr_cells = table.rows.cells
+                        hdr_cells = table.rows[0].cells
                         for i, title in enumerate(headers_list):
                             hdr_cells[i].width = col_widths[i+1]
-                            style_text_element(hdr_cells[i].paragraphs, title, size_pt=9, bold=True)
+                            style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
                             clear_cell_borders(hdr_cells[i])
                         
                         for item in items:
@@ -154,7 +156,7 @@ if api_token and account_id:
                             row_cells = row.cells
                             for i in range(5):
                                 row_cells[i].width = col_widths[i+1]
-                                style_text_element(row_cells[i].paragraphs, item[i], size_pt=9, bold=False)
+                                style_text_element(row_cells[i].paragraphs[0], item[i], size_pt=9, bold=False)
                                 clear_cell_borders(row_cells[i])
                             
                             try:
