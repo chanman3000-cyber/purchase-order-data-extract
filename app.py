@@ -33,7 +33,8 @@ else:
     api_key = None
 
 if api_key:
-    uploaded_file = st.file_uploader("Upload Purchase Order (PDF, DOCX)", type=["pdf", "docx"])
+    # Restrict input to PDF only for universal OpenRouter file parsing compliance
+    uploaded_file = st.file_uploader("Upload Purchase Order (PDF Only)", type=["pdf"])
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
@@ -41,7 +42,6 @@ if api_key:
                 try:
                     file_bytes = uploaded_file.read()
                     encoded_file = base64.b64encode(file_bytes).decode("utf-8")
-                    mime_type = "application/pdf" if uploaded_file.name.endswith('.pdf') else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     
                     prompt = """
                     Analyze this purchase order document.
@@ -63,7 +63,7 @@ if api_key:
                         "X-Title": "PO Extractor"
                     }
                     
-                    # UPDATED DATA STRUCTURE: Feeds data into the content array matching the OpenRouter specification
+                    # FIX: Uses OpenRouter's native 'file' configuration payload block with 'application/pdf' mime specification
                     payload = {
                         "model": "deepseek/deepseek-chat",
                         "messages": [
@@ -75,9 +75,10 @@ if api_key:
                                         "text": prompt
                                     },
                                     {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:{mime_type};base64,{encoded_file}"
+                                        "type": "file",
+                                        "file": {
+                                            "mime_type": "application/pdf",
+                                            "data": encoded_file
                                         }
                                     }
                                 ]
@@ -85,17 +86,17 @@ if api_key:
                         ]
                     }
                     
-                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
+                    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
                     
-                    # Diagnostic check to see exactly what OpenRouter is saying if it breaks
+                    # Safeguard: Intercept server level anomalies to prevent JSONDecode errors 
                     if response.status_code != 200:
-                        st.error(f"Server Error (Code {response.status_code}): {response.text}")
+                        st.error(f"OpenRouter Gateway Error (Status {response.status_code}): {response.text}")
                         st.stop()
                         
                     response_json = response.json()
                     
                     if "choices" not in response_json:
-                        st.error(f"Unexpected response layout: {response_json}")
+                        st.error(f"API key active but request failed: {response_json}")
                         st.stop()
                         
                     ai_output = response_json["choices"][0]["message"]["content"]
