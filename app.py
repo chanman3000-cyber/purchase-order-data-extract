@@ -9,7 +9,7 @@ import re
 from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor (Unrestricted HK Engine)")
+st.title("📄 Purchase Order Data Extractor (High-Speed Engine)")
 st.write("Upload a PO document to extract items into a structured MingLiU table format.")
 
 def style_text_element(paragraph, text, size_pt=9, bold=False):
@@ -37,11 +37,10 @@ if api_key:
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Extracting data via unrestricted cloud channel..."):
+            with st.spinner("Extracting data via ultra-fast cloud pipeline..."):
                 try:
                     file_bytes = uploaded_file.read()
                     
-                    # Read the PDF text structure natively in Python
                     pdf_file = io.BytesIO(file_bytes)
                     reader = PdfReader(pdf_file)
                     extracted_text = ""
@@ -76,8 +75,9 @@ if api_key:
                         "X-Title": "PO Extractor"
                     }
                     
+                    # FASTER MODEL UPDATE: meta-llama/llama-3.3-70b-instruct
                     payload = {
-                        "model": "deepseek/deepseek-chat",
+                        "model": "meta-llama/llama-3.3-70b-instruct",
                         "messages": [
                             {
                                 "role": "user",
@@ -86,9 +86,8 @@ if api_key:
                         ]
                     }
                     
-                    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
                     
-                    # SAFEGUARD: Capture and display any network errors transparently before decoding JSON
                     if response.status_code != 200:
                         st.error(f"OpenRouter Connection Error (Status {response.status_code}): {response.text}")
                         st.stop()
@@ -113,7 +112,7 @@ if api_key:
                     table.style = 'Table Grid'
                     table.allow_autofit = False
                     
-                    hdr_cells = table.rows.cells
+                    hdr_cells = table.rows[0].cells
                     for i, title in enumerate(headers_list):
                         hdr_cells[i].width = col_widths[i]
                         style_text_element(hdr_cells[i].paragraphs[0], title, size_pt=9, bold=True)
@@ -125,8 +124,7 @@ if api_key:
                         if '|' in line:
                             parts = [p.strip() for p in line.split('|')]
                             
-                            # CRITICAL FIX: Targeted exact positional slice indices (e.g. parts[1]) instead of pushing a raw list
-                            if "HEADER" in parts[0] and len(parts) >= 4:
+                            if "HEADER" in parts and len(parts) >= 4:
                                 p1 = doc.add_paragraph()
                                 style_text_element(p1, f"Restaurant Name: {parts[1]}", size_pt=11, bold=True)
                                 p2 = doc.add_paragraph()
@@ -148,7 +146,6 @@ if api_key:
                                 except ValueError:
                                     pass
                     
-                    # Generate Totals calculation grid footer properties
                     footer_row = table.add_row()
                     footer_cells = footer_row.cells
                     for i in range(6):
@@ -157,7 +154,6 @@ if api_key:
                     style_text_element(footer_cells[0].paragraphs[0], "Grand Total", size_pt=9, bold=True)
                     style_text_element(footer_cells[5].paragraphs[0], f"${grand_total:,.2f}", size_pt=9, bold=True)
                     
-                    # Force strict line height padding to 0 properties
                     for row in table.rows:
                         for cell in row.cells:
                             for paragraph in cell.paragraphs:
