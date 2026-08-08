@@ -9,7 +9,7 @@ import re
 from pypdf import PdfReader
 
 st.set_page_config(page_title="PO Data Extractor", page_icon="📄")
-st.title("📄 Purchase Order Data Extractor (SiliconFlow Engine)")
+st.title("📄 Purchase Order Data Extractor (Stable Global Engine)")
 st.write("Upload a PO document to translate items into a structured MingLiU table layout.")
 
 def style_text_element(paragraph, text, size_pt=9, bold=False):
@@ -36,8 +36,8 @@ def clear_cell_borders(cell):
         tcBorders.append(border)
     tcPr.append(tcBorders)
 
-if "SILICONFLOW_API_KEY" in st.secrets:
-    api_key = st.secrets["SILICONFLOW_API_KEY"]
+if "OPENROUTER_API_KEY" in st.secrets:
+    api_key = st.secrets["OPENROUTER_API_KEY"]
 else:
     api_key = None
 
@@ -46,7 +46,7 @@ if api_key:
     
     if uploaded_file is not None:
         if st.button("Process Document and Generate File"):
-            with st.spinner("Translating and structuring via SiliconFlow..."):
+            with st.spinner("Translating and structuring via open global channel..."):
                 try:
                     file_bytes = uploaded_file.read()
                     
@@ -80,19 +80,22 @@ if api_key:
                     
                     headers = {
                         "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "HTTP-Referer": "https://localhost:8501", 
+                        "X-Title": "LocalPOExtractor"
                     }
                     
+                    # Target stable DeepSeek V3 routing on OpenRouter nodes
                     payload = {
-                        "model": "deepseek-ai/DeepSeek-V3",
+                        "model": "deepseek/deepseek-chat",
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0.0
                     }
                     
-                    response = requests.post("https://siliconflow.cn", headers=headers, json=payload)
+                    response = requests.post("https://openrouter.ai", headers=headers, json=payload)
                     
                     if response.status_code != 200:
-                        st.error(f"SiliconFlow Engine Error: {response.text}")
+                        st.error(f"OpenRouter Connectivity Error (Status {response.status_code}): {response.text}")
                         st.stop()
                         
                     response_json = response.json()
@@ -186,4 +189,4 @@ if api_key:
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
 else:
-    st.error("Please add SILICONFLOW_API_KEY to your Streamlit Cloud Secrets settings to enable translations.")
+    st.error("Please add OPENROUTER_API_KEY to your Streamlit Cloud Secrets settings to unlock translations.")
